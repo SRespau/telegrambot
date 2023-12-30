@@ -4,24 +4,17 @@ const axios = require('axios')
 const cheerio = require('cheerio')
 const puppeteer = require('puppeteer')
 
-//Funciones
-const palafoxAragonia = require("./src/palafoxAragonia.js")
-const funciones = require("./src/funciones.js")
-
-//Constantes
 const bot = new Telegraf(process.env.BOT_TOKEN)
-
-const cines = Markup.inlineKeyboard([
-  // 1-st column
-  [Markup.button.callback('Aragonia', 'aragonia'), Markup.button.callback('Palafox', 'palafox')],
-  // 2nd column
-  [Markup.button.callback('Cinesa (Gran Casa)', 'grancasa'), Markup.button.callback('Cinesa (P. Venecia)', 'pvenecia')],
-  // 3rd column
-  [Markup.button.callback('Arte 7', 'arte7')]
-]);
 
 //Variables globales
 let cineSeleccionadoGlobal = null
+
+// FUNCIONES A MOVER
+function removeTextSigns(text) {
+  let modifiedText = text.replace(/-/g, ' ')
+  modifiedText = modifiedText.charAt(0).toUpperCase() + modifiedText.slice(1)
+  return modifiedText
+}
 
 // PUPPETEER PARA CINESA PVENECIA (MOVER A FICHERO A PARTE)
 async function clickSeeMoreButtons() {
@@ -81,6 +74,14 @@ async function clickSeeMoreButtons() {
 }
 /////
 
+const cines = Markup.inlineKeyboard([
+  // 1-st column
+  [Markup.button.callback('Aragonia', 'aragonia'), Markup.button.callback('Palafox', 'palafox')],
+  // 2nd column
+  [Markup.button.callback('Cinesa (Gran Casa)', 'grancasa'), Markup.button.callback('Cinesa (P. Venecia)', 'pvenecia')],
+  // 3rd column
+  [Markup.button.callback('Arte 7', 'arte7')]
+]);
 
 // Comando /start
 bot.start((ctx) => {
@@ -100,7 +101,47 @@ bot.action(['aragonia', 'palafox', 'grancasa', 'pvenecia', 'arte7'], async (ctx)
   switch (cineSeleccionado) {
     case 'aragonia':
     case 'palafox':
-      palafoxAragonia.cartelera(ctx)
+      // OBTENEMOS LOS TITULOS DE LA CARTELERA
+      const response = await axios.get('https://www.cinespalafox.com/cartelera.html', {
+        httpsAgent: new https.Agent({ rejectUnauthorized: false }) // Desactiva la verificación del certificado
+      });
+      const $ = cheerio.load(response.data);
+
+      // Obtener los títulos de la cartelera
+      const cartelera = $('.caption h2').map((index, element) => $(element).text().toLowerCase()).get();
+
+      // Obtener los enlaces de la cartelera
+      const linksCartelera = $('.field-content a').map((index, element) => $(element).attr('href')).get();
+      linksCartelera.shift(); // Eliminar el primer elemento (no necesario según tu lógica)
+
+      // Crear un objeto con los títulos como clave y los enlaces como valor
+      const carteleraObject = {};
+      cartelera.forEach((item, index) => {
+        carteleraObject[item] = linksCartelera[index] || null;
+      });
+
+
+      // Agrupar los botones en arrays para 2 columnas
+      const buttonsPerColumn = 2;
+      const buttonColumns = [];
+      for (let i = 0; i < cartelera.length; i += buttonsPerColumn) {
+        const columnKeys = cartelera.slice(i, i + buttonsPerColumn);
+        const columnButtons = columnKeys.map(key => {
+          // Aplicar la expresión regular para extraer el valor entre "cartelera/" y ".html"
+          const match = carteleraObject[key].match(/\/cartelera\/(.+?)\.html/);
+          // Usar el valor extraído como value en el botón
+          const value = match && match[1]
+      
+          // Crear el botón con el valor modificado
+          return Markup.button.callback(removeTextSigns(key), value);
+        });
+      
+        buttonColumns.push(columnButtons);
+      }
+
+      const inlineKeyboard = Markup.inlineKeyboard(buttonColumns);
+      ctx.editMessageText("Selecciona una opción:", inlineKeyboard);
+
       break;
     case 'grancasa':
       ctx.editMessageText('Cinesa (Gran Casa) seleccionado');
@@ -116,9 +157,46 @@ bot.action(['aragonia', 'palafox', 'grancasa', 'pvenecia', 'arte7'], async (ctx)
   }
 });
 
-//Leemos las peliculas de Aragonia y Palafox con el link
-bot.action(/^(?!.*\.html).*$/, (ctx) => {
-  palafoxAragonia.horario(ctx, cineSeleccionadoGlobal)
+//Leemos las peliculas con el link
+bot.action(/^(?!.*\.html).*$/, async (ctx) => {
+  console.log(ctx)
+  const cineSeleccionado = cineSeleccionadoGlobal
+  const URL = `https://www.cinespalafox.com/cartelera/${ctx.match[0]}.html`
+  // OBTENEMOS LOS TITULOS DE LA CARTELERA
+  const response = await axios.get(URL, {
+    httpsAgent: new https.Agent({ rejectUnauthorized: false }) // Desactiva la verificación del certificado
+  });
+  const $ = cheerio.load(response.data);
+  
+  const cineDiv = $(`.sesiones h3:contains("Cines ${cineSeleccionado === "aragonia" ? "aragonia" : "Palafox"}")`).parent();
+  const primerUl = cineDiv.find('ul').first();
+
+  const horariosData = {};
+  // Iterar sobre los elementos li dentro de ul
+  primerUl.find('> li').each((index, liElement) => {
+    const fecha = $(liElement).text();
+    // Obtener los textos dentro de los elementos a que están al mismo nivel que li
+    const textos = $(liElement).next('ul').find('li a').map((index, aElement) => $(aElement).text()).get();
+
+    horariosData[fecha] = textos;
+  });
+
+  let renderHorario = '';
+  renderHorario += `${removeTextSigns(ctx.match[0]).toUpperCase()}\n`
+  if(Object.keys(horariosData).length !== 0){
+    for (const fecha in horariosData) {
+      renderHorario += `${fecha}:\n`;
+      horariosData[fecha].forEach(horario => {
+        renderHorario += `  ·${horario}\n`;
+      });
+      renderHorario += '\n';
+    }
+  } else {
+    renderHorario += "No hay horarios para este cine"
+  }
+
+  ctx.editMessageText(`Aqui tienes los horarios para Cines ${cineSeleccionado}`)
+  ctx.reply(renderHorario)
 })
 
 // AWS event handler syntax (https://docs.aws.amazon.com/lambda/latest/dg/nodejs-handler.html)
