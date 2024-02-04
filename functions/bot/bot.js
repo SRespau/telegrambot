@@ -3,6 +3,7 @@ const { Telegraf, Markup } = require("telegraf");
 const axios = require('axios')
 const cheerio = require('cheerio')
 const puppeteer = require('puppeteer')
+const chromium = require('chrome-aws-lambda')
 
 const bot = new Telegraf(process.env.BOT_TOKEN)
 
@@ -20,8 +21,12 @@ function removeTextSigns(text) {
 
 // PUPPETEER PARA CINESA PVENECIA (MOVER A FICHERO APARTE)
 async function clickSeeMoreButtons(ctx) {
-  const browser = await puppeteer.launch();
-  const page = await browser.newPage();
+  const browser = await puppeteer.launch({
+    args: chromium.args,
+    executablePath: await chromium.executablePath,
+    headless: true,
+  })
+  const page = await browser.newPage()
   console.log(ctx.match[0])
   const cineId = ctx.match[0] === 'pvenecia' ? '530' : '300'
 
