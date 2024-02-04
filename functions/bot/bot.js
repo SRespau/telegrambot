@@ -256,12 +256,3 @@ bot.action(/^(?!.*\.html).*$/, async (ctx) => {
     ctx.reply(renderHorario)
   } 
 })
-
-
-
-// Lanzamos el bot
-bot.launch().then(() => {
-  console.log("Bot is running")
-}).catch((error) => {
-  console.error("Error launching bot:", error)
-})
