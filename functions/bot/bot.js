@@ -45,8 +45,6 @@ async function clickSeeMoreButtons(ctx) {
   const updatedHTML = await page.content()
 
   // Usar Cheerio para analizar el HTML actualizado
-  
-
   const $ = cheerio.load(updatedHTML)
 
   let titles = $('.movie-showtimes-n');
@@ -256,3 +254,15 @@ bot.action(/^(?!.*\.html).*$/, async (ctx) => {
     ctx.reply(renderHorario)
   } 
 })
+
+
+// AWS event handler syntax (https://docs.aws.amazon.com/lambda/latest/dg/nodejs-handler.html)
+exports.handler = async event => {
+  try {
+    await bot.handleUpdate(JSON.parse(event.body))
+    return { statusCode: 200, body: "" }
+  } catch (e) {
+    console.error("error in handler:", e)
+    return { statusCode: 400, body: "This endpoint is meant for bot and telegram communication" }
+  }
+}
