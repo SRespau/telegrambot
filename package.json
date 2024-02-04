@@ -15,7 +15,6 @@
     "netlify-lambda": "^2.0.16",
     "chrome-aws-lambda": "^10.1.0",
     "puppeteer": "^21.6.1",
-    "puppeteer-core": "^21.11.0",
     "telegraf": "^4.15.3"
   }
 }
